@@ -90,3 +90,54 @@ func TestTopCommands(t *testing.T) {
 		t.Errorf("got %+v, want {git status 3}", top[0])
 	}
 }
+
+func TestSearchSubstring(t *testing.T) {
+	entries := []Entry{
+		{Command: "git status"},
+		{Command: "ls -la"},
+		{Command: "git diff HEAD"},
+	}
+	matches, err := Search(entries, "GIT", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(matches) != 2 {
+		t.Fatalf("got %d matches, want 2", len(matches))
+	}
+	if matches[0].Command != "git status" || matches[1].Command != "git diff HEAD" {
+		t.Errorf("got %+v", matches)
+	}
+}
+
+func TestSearchRegex(t *testing.T) {
+	entries := []Entry{
+		{Command: "git status"},
+		{Command: "git commit -m fix"},
+		{Command: "ls -la"},
+	}
+	matches, err := Search(entries, `^git (status|commit)`, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(matches) != 2 {
+		t.Fatalf("got %d matches, want 2", len(matches))
+	}
+}
+
+func TestSearchRegexInvalid(t *testing.T) {
+	_, err := Search(nil, "(unclosed", true)
+	if err == nil {
+		t.Fatal("expected error for invalid regex, got nil")
+	}
+}
+
+func TestSearchNoMatches(t *testing.T) {
+	entries := []Entry{{Command: "ls -la"}}
+	matches, err := Search(entries, "nonexistent", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if matches != nil {
+		t.Errorf("got %+v, want nil", matches)
+	}
+}

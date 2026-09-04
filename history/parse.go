@@ -11,6 +11,7 @@ package history
 import (
 	"bufio"
 	"io"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -162,4 +163,34 @@ func TopCommands(entries []Entry, n int) []CommandCount {
 		result = result[:n]
 	}
 	return result
+}
+
+// Search returns the entries whose Command matches query, in file order.
+// query is matched as a case-insensitive substring unless useRegex is set,
+// in which case it is compiled as a Go regular expression and matched
+// against the command as-is (regex matching is case-sensitive unless the
+// pattern itself opts into "(?i)").
+func Search(entries []Entry, query string, useRegex bool) ([]Entry, error) {
+	if useRegex {
+		re, err := regexp.Compile(query)
+		if err != nil {
+			return nil, err
+		}
+		var matches []Entry
+		for _, e := range entries {
+			if re.MatchString(e.Command) {
+				matches = append(matches, e)
+			}
+		}
+		return matches, nil
+	}
+
+	q := strings.ToLower(query)
+	var matches []Entry
+	for _, e := range entries {
+		if strings.Contains(strings.ToLower(e.Command), q) {
+			matches = append(matches, e)
+		}
+	}
+	return matches, nil
 }

@@ -24,6 +24,8 @@ func main() {
 		err = runTop(os.Args[2:])
 	case "stats":
 		err = runStats(os.Args[2:])
+	case "search":
+		err = runSearch(os.Args[2:])
 	case "-h", "--help", "help":
 		printUsage()
 		return
@@ -43,8 +45,9 @@ func printUsage() {
 	fmt.Fprintln(os.Stderr, `usage: shh <command> [flags] [file...]
 
 commands:
-  top    show the most frequently run commands
-  stats  show summary statistics for a history file
+  top     show the most frequently run commands
+  stats   show summary statistics for a history file
+  search  find commands matching a substring or regex
 
 flags (top):
   -n int      number of commands to show (default 10)
@@ -52,6 +55,14 @@ flags (top):
 
 flags (stats):
   --json      output as JSON instead of plain text
+
+flags (search):
+  --regex     treat the query as a regular expression instead of a
+              case-insensitive substring
+  --json      output as JSON instead of plain text
+
+usage (search):
+  shh search [flags] <query> [file...]
 
 if no file is given, shh reads $HISTFILE, falling back to
 ~/.zsh_history or ~/.bash_history, whichever exists first.`)
@@ -137,6 +148,60 @@ func runStats(args []string) error {
 		fmt.Printf("newest:           %s\n", out.NewestTime)
 	} else {
 		fmt.Println("no timestamps found in history file(s)")
+	}
+	return nil
+}
+
+type searchResult struct {
+	Command string `json:"command"`
+	Time    string `json:"time,omitempty"`
+	Line    int    `json:"line"`
+}
+
+func runSearch(args []string) error {
+	fs := flag.NewFlagSet("search", flag.ExitOnError)
+	useRegex := fs.Bool("regex", false, "treat the query as a regular expression")
+	jsonOut := fs.Bool("json", false, "output as JSON")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	rest := fs.Args()
+	if len(rest) == 0 {
+		return fmt.Errorf("search requires a query, e.g. shh search git")
+	}
+	query, paths := rest[0], rest[1:]
+
+	entries, err := loadEntries(paths)
+	if err != nil {
+		return err
+	}
+
+	matches, err := history.Search(entries, query, *useRegex)
+	if err != nil {
+		return fmt.Errorf("invalid query: %w", err)
+	}
+
+	if *jsonOut {
+		results := make([]searchResult, len(matches))
+		for i, m := range matches {
+			r := searchResult{Command: m.Command, Line: m.Line}
+			if !m.Time.IsZero() {
+				r.Time = m.Time.Format(time.RFC3339)
+			}
+			results[i] = r
+		}
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(results)
+	}
+
+	for _, m := range matches {
+		if m.Time.IsZero() {
+			fmt.Printf("%6d  %s\n", m.Line, m.Command)
+		} else {
+			fmt.Printf("%6d  %s  %s\n", m.Line, m.Time.Format(time.RFC3339), m.Command)
+		}
 	}
 	return nil
 }

@@ -67,7 +67,19 @@ $ shh stats --json
   "oldest_time": "2025-11-02T08:14:22-05:00",
   "newest_time": "2026-09-04T17:03:11-05:00"
 }
+
+$ shh search "git push"
+  1042  2026-01-14T09:22:01-05:00  git push origin main
+  2113  2026-03-02T16:40:33-05:00  git push --force-with-lease
+
+$ shh search --regex '^git (add|commit)'
+   881  2025-12-19T11:05:44-05:00  git add -A
+   882  2025-12-19T11:05:52-05:00  git commit -m wip
 ```
+
+`search` matches as a case-insensitive substring by default; `--regex`
+compiles the query as a Go regular expression and matches the raw command
+instead.
 
 `--json` is supported on every subcommand and always produces the same
 shape whether the input is a bash or zsh history file, which is the whole
@@ -95,4 +107,5 @@ which is the common case for a plain bash history file.
 ## Status
 
 Early. Parses bash (plain and `HISTTIMEFORMAT`) and zsh (`EXTENDED_HISTORY`)
-formats. No dependencies outside the standard library.
+formats, with `top`, `stats`, and `search` subcommands. No dependencies
+outside the standard library.

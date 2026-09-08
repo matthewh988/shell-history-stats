@@ -81,6 +81,19 @@ $ shh search --regex '^git (add|commit)'
 compiles the query as a Go regular expression and matches the raw command
 instead.
 
+Every subcommand also takes `--since` and `--until` to narrow to a time
+range:
+
+```
+$ shh top --since 2026-01-01 --until 2026-02-01
+$ shh stats --since 24h
+```
+
+`--since`/`--until` accept RFC3339, `2026-01-02 15:04:05`, `2026-01-02`, or a
+duration like `24h` meaning that far before now. Entries with no timestamp
+(plain bash history without `HISTTIMEFORMAT`) are dropped whenever either
+flag is set, since there's no way to know where they'd fall in the range.
+
 `--json` is supported on every subcommand and always produces the same
 shape whether the input is a bash or zsh history file, which is the whole
 point: the file format is an implementation detail you shouldn't need to
@@ -107,5 +120,5 @@ which is the common case for a plain bash history file.
 ## Status
 
 Early. Parses bash (plain and `HISTTIMEFORMAT`) and zsh (`EXTENDED_HISTORY`)
-formats, with `top`, `stats`, and `search` subcommands. No dependencies
-outside the standard library.
+formats, with `top`, `stats`, and `search` subcommands, all filterable by
+`--since`/`--until`. No dependencies outside the standard library.

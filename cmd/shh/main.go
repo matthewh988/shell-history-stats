@@ -52,17 +52,28 @@ commands:
 flags (top):
   -n int      number of commands to show (default 10)
   --json      output as JSON instead of a table
+  --since     only include commands at or after this time
+  --until     only include commands at or before this time
 
 flags (stats):
   --json      output as JSON instead of plain text
+  --since     only include commands at or after this time
+  --until     only include commands at or before this time
 
 flags (search):
   --regex     treat the query as a regular expression instead of a
               case-insensitive substring
   --json      output as JSON instead of plain text
+  --since     only include commands at or after this time
+  --until     only include commands at or before this time
 
 usage (search):
   shh search [flags] <query> [file...]
+
+--since and --until accept RFC3339 ("2026-01-02T15:04:05-05:00"),
+"2026-01-02 15:04:05", "2026-01-02", or a duration ("36h") meaning that
+long ago from now. Entries with no timestamp are excluded whenever
+either flag is set, since there's no way to know where they fall.
 
 if no file is given, shh reads $HISTFILE, falling back to
 ~/.zsh_history or ~/.bash_history, whichever exists first.`)
@@ -72,11 +83,17 @@ func runTop(args []string) error {
 	fs := flag.NewFlagSet("top", flag.ExitOnError)
 	n := fs.Int("n", 10, "number of commands to show")
 	jsonOut := fs.Bool("json", false, "output as JSON")
+	since := fs.String("since", "", "only include commands at or after this time")
+	until := fs.String("until", "", "only include commands at or before this time")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 
 	entries, err := loadEntries(fs.Args())
+	if err != nil {
+		return err
+	}
+	entries, err = filterByTimeFlags(entries, *since, *until)
 	if err != nil {
 		return err
 	}
@@ -105,11 +122,17 @@ type statsOutput struct {
 func runStats(args []string) error {
 	fs := flag.NewFlagSet("stats", flag.ExitOnError)
 	jsonOut := fs.Bool("json", false, "output as JSON")
+	since := fs.String("since", "", "only include commands at or after this time")
+	until := fs.String("until", "", "only include commands at or before this time")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 
 	entries, err := loadEntries(fs.Args())
+	if err != nil {
+		return err
+	}
+	entries, err = filterByTimeFlags(entries, *since, *until)
 	if err != nil {
 		return err
 	}
@@ -162,6 +185,8 @@ func runSearch(args []string) error {
 	fs := flag.NewFlagSet("search", flag.ExitOnError)
 	useRegex := fs.Bool("regex", false, "treat the query as a regular expression")
 	jsonOut := fs.Bool("json", false, "output as JSON")
+	since := fs.String("since", "", "only include commands at or after this time")
+	until := fs.String("until", "", "only include commands at or before this time")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -173,6 +198,10 @@ func runSearch(args []string) error {
 	query, paths := rest[0], rest[1:]
 
 	entries, err := loadEntries(paths)
+	if err != nil {
+		return err
+	}
+	entries, err = filterByTimeFlags(entries, *since, *until)
 	if err != nil {
 		return err
 	}
@@ -229,6 +258,51 @@ func loadEntries(paths []string) ([]history.Entry, error) {
 		all = append(all, entries...)
 	}
 	return all, nil
+}
+
+// filterByTimeFlags applies --since/--until to entries. Either string may be
+// empty, meaning that bound is unset.
+func filterByTimeFlags(entries []history.Entry, since, until string) ([]history.Entry, error) {
+	if since == "" && until == "" {
+		return entries, nil
+	}
+	var sinceTime, untilTime time.Time
+	var err error
+	if since != "" {
+		if sinceTime, err = parseTimeArg(since); err != nil {
+			return nil, fmt.Errorf("--since: %w", err)
+		}
+	}
+	if until != "" {
+		if untilTime, err = parseTimeArg(until); err != nil {
+			return nil, fmt.Errorf("--until: %w", err)
+		}
+	}
+	return history.FilterByTime(entries, sinceTime, untilTime), nil
+}
+
+// timeLayouts are the absolute formats accepted by --since/--until, tried in
+// order.
+var timeLayouts = []string{
+	time.RFC3339,
+	"2006-01-02 15:04:05",
+	"2006-01-02T15:04:05",
+	"2006-01-02",
+}
+
+// parseTimeArg parses a --since/--until value. It accepts a duration such as
+// "36h", taken as that far before now, or one of timeLayouts interpreted in
+// the local timezone.
+func parseTimeArg(s string) (time.Time, error) {
+	if d, err := time.ParseDuration(s); err == nil {
+		return time.Now().Add(-d), nil
+	}
+	for _, layout := range timeLayouts {
+		if t, err := time.ParseInLocation(layout, s, time.Local); err == nil {
+			return t, nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("could not parse %q as a time or duration", s)
 }
 
 func defaultHistoryFile() (string, error) {

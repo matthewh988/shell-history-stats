@@ -165,6 +165,30 @@ func TopCommands(entries []Entry, n int) []CommandCount {
 	return result
 }
 
+// FilterByTime returns the entries whose Time falls within [since, until],
+// in file order. A zero since or until leaves that bound unset. Entries with
+// no timestamp are dropped whenever either bound is set, since there's no
+// way to know whether an untimestamped entry belongs in the range.
+func FilterByTime(entries []Entry, since, until time.Time) []Entry {
+	if since.IsZero() && until.IsZero() {
+		return entries
+	}
+	var out []Entry
+	for _, e := range entries {
+		if e.Time.IsZero() {
+			continue
+		}
+		if !since.IsZero() && e.Time.Before(since) {
+			continue
+		}
+		if !until.IsZero() && e.Time.After(until) {
+			continue
+		}
+		out = append(out, e)
+	}
+	return out
+}
+
 // Search returns the entries whose Command matches query, in file order.
 // query is matched as a case-insensitive substring unless useRegex is set,
 // in which case it is compiled as a Go regular expression and matched

@@ -131,6 +131,49 @@ func TestSearchRegexInvalid(t *testing.T) {
 	}
 }
 
+func TestFilterByTimeNoBounds(t *testing.T) {
+	entries := []Entry{{Command: "a"}, {Command: "b", Time: time.Unix(100, 0)}}
+	got := FilterByTime(entries, time.Time{}, time.Time{})
+	if len(got) != 2 {
+		t.Fatalf("got %d entries, want 2", len(got))
+	}
+}
+
+func TestFilterByTimeRange(t *testing.T) {
+	entries := []Entry{
+		{Command: "no-timestamp"},
+		{Command: "too-early", Time: time.Unix(100, 0)},
+		{Command: "in-range", Time: time.Unix(200, 0)},
+		{Command: "too-late", Time: time.Unix(300, 0)},
+	}
+	got := FilterByTime(entries, time.Unix(150, 0), time.Unix(250, 0))
+	if len(got) != 1 || got[0].Command != "in-range" {
+		t.Fatalf("got %+v, want only in-range", got)
+	}
+}
+
+func TestFilterByTimeSinceOnly(t *testing.T) {
+	entries := []Entry{
+		{Command: "too-early", Time: time.Unix(100, 0)},
+		{Command: "in-range", Time: time.Unix(200, 0)},
+	}
+	got := FilterByTime(entries, time.Unix(150, 0), time.Time{})
+	if len(got) != 1 || got[0].Command != "in-range" {
+		t.Fatalf("got %+v, want only in-range", got)
+	}
+}
+
+func TestFilterByTimeUntilOnly(t *testing.T) {
+	entries := []Entry{
+		{Command: "in-range", Time: time.Unix(100, 0)},
+		{Command: "too-late", Time: time.Unix(200, 0)},
+	}
+	got := FilterByTime(entries, time.Time{}, time.Unix(150, 0))
+	if len(got) != 1 || got[0].Command != "in-range" {
+		t.Fatalf("got %+v, want only in-range", got)
+	}
+}
+
 func TestSearchNoMatches(t *testing.T) {
 	entries := []Entry{{Command: "ls -la"}}
 	matches, err := Search(entries, "nonexistent", false)

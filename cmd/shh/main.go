@@ -2,9 +2,11 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"time"
@@ -76,7 +78,9 @@ long ago from now. Entries with no timestamp are excluded whenever
 either flag is set, since there's no way to know where they fall.
 
 if no file is given, shh reads $HISTFILE, falling back to
-~/.zsh_history or ~/.bash_history, whichever exists first.`)
+~/.zsh_history, ~/.bash_history, or fish's fish_history, whichever
+exists first. bash, zsh, and fish history files are all detected
+automatically; you don't need to say which one you're pointing at.`)
 }
 
 func runTop(args []string) error {
@@ -250,7 +254,7 @@ func loadEntries(paths []string) ([]history.Entry, error) {
 		if err != nil {
 			return nil, err
 		}
-		entries, err := history.Parse(f)
+		entries, err := parseHistoryFile(f)
 		f.Close()
 		if err != nil {
 			return nil, fmt.Errorf("parsing %s: %w", p, err)
@@ -258,6 +262,23 @@ func loadEntries(paths []string) ([]history.Entry, error) {
 		all = append(all, entries...)
 	}
 	return all, nil
+}
+
+const fishPrefix = "- cmd: "
+
+// parseHistoryFile picks bash/zsh or fish parsing based on the file's first
+// line: fish history entries start with "- cmd: ", which neither bash nor
+// zsh ever write.
+func parseHistoryFile(f *os.File) ([]history.Entry, error) {
+	br := bufio.NewReader(f)
+	prefix, err := br.Peek(len(fishPrefix))
+	if err != nil && err != io.EOF && err != bufio.ErrBufferFull {
+		return nil, err
+	}
+	if string(prefix) == fishPrefix {
+		return history.ParseFish(br)
+	}
+	return history.Parse(br)
 }
 
 // filterByTimeFlags applies --since/--until to entries. Either string may be
@@ -319,5 +340,23 @@ func defaultHistoryFile() (string, error) {
 			return candidate, nil
 		}
 	}
+	if candidate := fishHistoryFile(home); candidate != "" {
+		return candidate, nil
+	}
 	return "", fmt.Errorf("no history file found; set $HISTFILE or pass a path")
+}
+
+// fishHistoryFile returns fish's default history path if it exists. fish
+// keeps it under $XDG_DATA_HOME (or ~/.local/share) rather than $HOME
+// directly.
+func fishHistoryFile(home string) string {
+	dataHome := os.Getenv("XDG_DATA_HOME")
+	if dataHome == "" {
+		dataHome = filepath.Join(home, ".local", "share")
+	}
+	candidate := filepath.Join(dataHome, "fish", "fish_history")
+	if _, err := os.Stat(candidate); err == nil {
+		return candidate
+	}
+	return ""
 }

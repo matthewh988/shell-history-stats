@@ -74,6 +74,79 @@ func TestParseZshContinuation(t *testing.T) {
 	}
 }
 
+func TestParseFishBasic(t *testing.T) {
+	input := "- cmd: git status\n  when: 1690000000\n- cmd: ls -la\n  when: 1690000100\n"
+	entries, err := ParseFish(strings.NewReader(input))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("got %d entries, want 2", len(entries))
+	}
+	if entries[0].Command != "git status" {
+		t.Errorf("got command %q, want %q", entries[0].Command, "git status")
+	}
+	want := time.Unix(1690000000, 0)
+	if !entries[0].Time.Equal(want) {
+		t.Errorf("got time %v, want %v", entries[0].Time, want)
+	}
+	if entries[1].Command != "ls -la" {
+		t.Errorf("got command %q, want %q", entries[1].Command, "ls -la")
+	}
+}
+
+func TestParseFishPaths(t *testing.T) {
+	input := "- cmd: git add foo.txt\n  when: 1690000000\n  paths:\n    - foo.txt\n- cmd: ls\n  when: 1690000100\n"
+	entries, err := ParseFish(strings.NewReader(input))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("got %d entries, want 2: %+v", len(entries), entries)
+	}
+	if entries[0].Command != "git add foo.txt" {
+		t.Errorf("got command %q, want %q", entries[0].Command, "git add foo.txt")
+	}
+	if entries[1].Command != "ls" {
+		t.Errorf("got command %q, want %q", entries[1].Command, "ls")
+	}
+}
+
+func TestParseFishEscaping(t *testing.T) {
+	input := `- cmd: echo one\ntwo
+  when: 1690000000
+- cmd: echo 'a\\b'
+  when: 1690000100
+`
+	entries, err := ParseFish(strings.NewReader(input))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("got %d entries, want 2", len(entries))
+	}
+	if entries[0].Command != "echo one\ntwo" {
+		t.Errorf("got command %q, want %q", entries[0].Command, "echo one\ntwo")
+	}
+	if entries[1].Command != `echo 'a\b'` {
+		t.Errorf("got command %q, want %q", entries[1].Command, `echo 'a\b'`)
+	}
+}
+
+func TestParseFishNoWhen(t *testing.T) {
+	input := "- cmd: ls\n"
+	entries, err := ParseFish(strings.NewReader(input))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("got %d entries, want 1", len(entries))
+	}
+	if !entries[0].Time.IsZero() {
+		t.Errorf("expected no timestamp, got %v", entries[0].Time)
+	}
+}
+
 func TestTopCommands(t *testing.T) {
 	entries := []Entry{
 		{Command: "git status"},

@@ -1,14 +1,15 @@
 # shell-history-stats
 
-Your shell has been logging every command you've ever run. bash and zsh
-disagree on how, though: plain bash history is one line per command with no
-timestamp unless `HISTTIMEFORMAT` is set (in which case it writes a
-`#<unix-seconds>` comment before each line), and zsh's extended history
-format packs the timestamp and elapsed time into the line itself
+Your shell has been logging every command you've ever run. bash, zsh, and
+fish all disagree on how, though: plain bash history is one line per command
+with no timestamp unless `HISTTIMEFORMAT` is set (in which case it writes a
+`#<unix-seconds>` comment before each line), zsh's extended history format
+packs the timestamp and elapsed time into the line itself
 (`: 1690000000:0;git status`), with long commands continued across multiple
-lines using a trailing backslash.
+lines using a trailing backslash, and fish writes a YAML-like block per
+command (`- cmd: git status` followed by `when: <unix-seconds>`).
 
-`shh` parses either format into one common structure and answers the
+`shh` parses any of the three into one common structure and answers the
 questions the raw file can't: what do I actually run all day, and how many
 distinct commands are in this file.
 
@@ -26,9 +27,10 @@ go build -o shh ./cmd/shh
 
 ## Usage
 
-By default `shh` reads `$HISTFILE`, falling back to `~/.zsh_history` then
-`~/.bash_history`, whichever exists first. You can also point it at a file
-directly.
+By default `shh` reads `$HISTFILE`, falling back to `~/.zsh_history`,
+`~/.bash_history`, then fish's `fish_history`, whichever exists first. You
+can also point it at a file directly; the format is detected from its
+content, so it doesn't matter which shell wrote it.
 
 ```
 $ shh top -n 5
@@ -117,8 +119,15 @@ for _, e := range entries {
 `Entry.Time` is the zero `time.Time` when the source line had no timestamp,
 which is the common case for a plain bash history file.
 
+`history.Parse` handles bash and zsh; fish's history format is different
+enough (no line-oriented layout, embedded newlines are escaped rather than
+continued) that it gets its own entry point, `history.ParseFish`. The `shh`
+CLI picks between the two automatically by sniffing the first line of the
+file, so this only matters if you're using the package directly.
+
 ## Status
 
-Early. Parses bash (plain and `HISTTIMEFORMAT`) and zsh (`EXTENDED_HISTORY`)
-formats, with `top`, `stats`, and `search` subcommands, all filterable by
-`--since`/`--until`. No dependencies outside the standard library.
+Early. Parses bash (plain and `HISTTIMEFORMAT`), zsh (`EXTENDED_HISTORY`),
+and fish history formats, with `top`, `stats`, and `search` subcommands, all
+filterable by `--since`/`--until`. No dependencies outside the standard
+library.

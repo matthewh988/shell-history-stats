@@ -129,6 +129,80 @@ func isAllDigits(s string) bool {
 	return true
 }
 
+// ParseFish reads a fish shell history file and returns its entries in file
+// order. fish writes history as a sequence of blocks that look like YAML but
+// aren't parsed as such by fish itself, so this doesn't use a YAML parser
+// either:
+//
+//	- cmd: git status
+//	  when: 1690000000
+//	- cmd: git push
+//	  when: 1690000100
+//	  paths:
+//	    - some/file
+//
+// A command's embedded backslashes and newlines are escaped as "\\\\" and
+// "\\n" rather than spanning multiple lines, so unlike Parse there's no
+// continuation handling here: every entry is exactly one line in the file.
+// The optional "paths" field (files fish thinks the command touched) is
+// ignored; its list lines don't match any prefix this function looks for, so
+// they're skipped without special-casing.
+func ParseFish(r io.Reader) ([]Entry, error) {
+	scanner := bufio.NewScanner(r)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+
+	var entries []Entry
+	var current *Entry
+	lineNo := 0
+
+	for scanner.Scan() {
+		lineNo++
+		line := scanner.Text()
+
+		if cmd, ok := strings.CutPrefix(line, "- cmd: "); ok {
+			entries = append(entries, Entry{Command: unescapeFishCommand(cmd), Line: lineNo})
+			current = &entries[len(entries)-1]
+			continue
+		}
+		if when, ok := strings.CutPrefix(line, "  when: "); ok && current != nil {
+			if secs, err := strconv.ParseInt(strings.TrimSpace(when), 10, 64); err == nil {
+				current.Time = time.Unix(secs, 0)
+			}
+			continue
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	return entries, nil
+}
+
+// unescapeFishCommand reverses fish's history escaping, where a literal
+// backslash is written as "\\" and a newline as "\n".
+func unescapeFishCommand(s string) string {
+	if !strings.Contains(s, "\\") {
+		return s
+	}
+	var b strings.Builder
+	b.Grow(len(s))
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\\' && i+1 < len(s) {
+			switch s[i+1] {
+			case 'n':
+				b.WriteByte('\n')
+				i++
+				continue
+			case '\\':
+				b.WriteByte('\\')
+				i++
+				continue
+			}
+		}
+		b.WriteByte(s[i])
+	}
+	return b.String()
+}
+
 // CommandCount is one command paired with how many times it occurs.
 type CommandCount struct {
 	Command string `json:"command"`
